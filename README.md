@@ -21,7 +21,33 @@ git tidy -n
 
 # Delete merged branches
 git tidy
+
+# Skip confirmation prompt
+git tidy -y
+
+# Delete merged branches from the remote
+git tidy -r
+
+# Exclude branches matching a glob pattern (repeatable)
+git tidy --exclude 'release/*'
+git tidy -e 'release/*' -e 'hotfix/*'
+
+# Compare against a specific base branch
+git tidy -b develop
+
+# Combine flags
+git tidy -rn --exclude 'release/*'
 ```
+
+### Options
+
+| Flag | Description |
+|---|---|
+| `-n`, `--dry-run` | Show which branches would be deleted without deleting them |
+| `-r`, `--remote` | Delete merged branches from the remote instead of local |
+| `-y`, `--yes` | Skip confirmation prompt |
+| `-b`, `--base <branch>` | Branch to compare against (default: auto-detected from remote) |
+| `-e`, `--exclude <pattern>` | Exclude branches matching a glob pattern (repeatable) |
 
 Example output:
 

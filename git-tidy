@@ -8,6 +8,7 @@ dry_run=false
 delete_remote=false
 skip_confirm=false
 base_branch=""
+exclude_patterns=()
 
 # Expand combined short flags (e.g. -rn -> -r -n)
 expanded=()
@@ -28,6 +29,17 @@ while [[ $i -lt ${#expanded[@]} ]]; do
         -n|--dry-run) dry_run=true ;;
         -r|--remote) delete_remote=true ;;
         -y|--yes) skip_confirm=true ;;
+        -e|--exclude)
+            i=$((i + 1))
+            if [[ $i -ge ${#expanded[@]} ]]; then
+                echo "Option $arg requires a pattern" >&2
+                exit 1
+            fi
+            exclude_patterns+=("${expanded[$i]}")
+            ;;
+        --exclude=*)
+            exclude_patterns+=("${arg#--exclude=}")
+            ;;
         -b|--base)
             i=$((i + 1))
             if [[ $i -ge ${#expanded[@]} ]]; then
@@ -40,15 +52,16 @@ while [[ $i -lt ${#expanded[@]} ]]; do
             base_branch="${arg#--base=}"
             ;;
         -h|--help)
-            echo "Usage: git tidy [-n|--dry-run] [-r|--remote] [-y|--yes] [-b|--base <branch>]"
+            echo "Usage: git tidy [-n|--dry-run] [-r|--remote] [-y|--yes] [-b|--base <branch>] [-e|--exclude <pattern>]"
             echo ""
             echo "Delete local branches fully merged into the default branch."
             echo ""
             echo "Options:"
-            echo "  -n, --dry-run        Show which branches would be deleted without deleting them"
-            echo "  -r, --remote         Delete merged branches from the remote instead of local"
-            echo "  -y, --yes            Skip confirmation prompt"
-            echo "  -b, --base <branch>  Branch to compare against (default: auto-detected from remote)"
+            echo "  -n, --dry-run            Show which branches would be deleted without deleting them"
+            echo "  -r, --remote             Delete merged branches from the remote instead of local"
+            echo "  -y, --yes                Skip confirmation prompt"
+            echo "  -b, --base <branch>      Branch to compare against (default: auto-detected from remote)"
+            echo "  -e, --exclude <pattern>  Exclude branches matching glob pattern (repeatable)"
             exit 0
             ;;
         *)
@@ -76,6 +89,15 @@ else
     fi
 fi
 
+is_excluded() {
+    local branch="$1"
+    for pattern in "${exclude_patterns[@]}"; do
+        # shellcheck disable=SC2254
+        case "$branch" in $pattern) return 0 ;; esac
+    done
+    return 1
+}
+
 git fetch origin --prune --quiet || true
 
 current=$(git branch --show-current)
@@ -87,6 +109,7 @@ if $delete_remote; then
         branch="${ref#origin/}"
         [[ "$branch" == "$default_branch" ]] && continue
         [[ "$branch" == "HEAD" ]] && continue
+        [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
         ahead=$(git rev-list --count "origin/${default_branch}".."$ref" 2>/dev/null) || continue
         [[ "$ahead" == "0" ]] && candidates+=("$branch")
@@ -95,6 +118,7 @@ else
     for branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
         [[ "$branch" == "$current" ]] && continue
         [[ "$branch" == "$default_branch" ]] && continue
+        [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
         ahead=$(git rev-list --count "origin/${default_branch}".."$branch" 2>/dev/null) || continue
         [[ "$ahead" == "0" ]] && candidates+=("$branch")
@@ -126,24 +150,39 @@ if ! $skip_confirm; then
 fi
 
 # Delete
+total=${#candidates[@]}
 deleted=()
+failed=()
 if $delete_remote; then
-    for branch in "${candidates[@]}"; do
+    for idx in "${!candidates[@]}"; do
+        branch="${candidates[$idx]}"
+        printf '\r\033[K[%d/%d] Deleting origin/%s...' "$((idx + 1))" "$total" "$branch"
         if git push origin --delete "$branch" &>/dev/null; then
             deleted+=("$branch")
+        else
+            failed+=("$branch")
         fi
     done
 else
-    for branch in "${candidates[@]}"; do
+    for idx in "${!candidates[@]}"; do
+        branch="${candidates[$idx]}"
+        printf '\r\033[K[%d/%d] Deleting %s...' "$((idx + 1))" "$total" "$branch"
         if git branch -d "$branch" &>/dev/null; then
             deleted+=("$branch")
+        else
+            failed+=("$branch")
         fi
     done
 fi
+printf '\r\033[K'
 
 if [[ ${#deleted[@]} -gt 0 ]]; then
     echo "Deleted ${#deleted[@]} merged branch(es):"
     printf '  %s\n' "${deleted[@]}"
 else
     echo "No branches were deleted."
+fi
+if [[ ${#failed[@]} -gt 0 ]]; then
+    echo "Failed to delete ${#failed[@]} branch(es):"
+    printf '  %s\n' "${failed[@]}"
 fi
