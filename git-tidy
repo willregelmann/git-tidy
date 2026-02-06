@@ -1,0 +1,69 @@
+#!/bin/bash
+# git-tidy — Delete local branches fully merged into the default branch.
+# Place on PATH (or symlink) to use as: git tidy
+
+set -euo pipefail
+
+dry_run=false
+for arg in "$@"; do
+    case "$arg" in
+        -n|--dry-run) dry_run=true ;;
+        -h|--help)
+            echo "Usage: git tidy [-n|--dry-run]"
+            echo ""
+            echo "Delete local branches fully merged into the default branch."
+            echo ""
+            echo "Options:"
+            echo "  -n, --dry-run  Show which branches would be deleted without deleting them"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Detect default branch
+default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@') || true
+if [[ -z "$default_branch" ]]; then
+    if git show-ref --verify --quiet refs/remotes/origin/main; then
+        default_branch="main"
+    elif git show-ref --verify --quiet refs/remotes/origin/master; then
+        default_branch="master"
+    else
+        echo "Could not determine default branch." >&2
+        exit 1
+    fi
+fi
+
+git fetch origin --prune --quiet
+
+current=$(git branch --show-current)
+deleted=()
+
+for branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
+    [[ "$branch" == "$current" ]] && continue
+    [[ "$branch" == "$default_branch" ]] && continue
+
+    ahead=$(git rev-list --count "origin/${default_branch}".."$branch" 2>/dev/null) || continue
+
+    if [[ "$ahead" == "0" ]]; then
+        if $dry_run; then
+            deleted+=("$branch")
+        elif git branch -d "$branch" &>/dev/null; then
+            deleted+=("$branch")
+        fi
+    fi
+done
+
+if [[ ${#deleted[@]} -gt 0 ]]; then
+    if $dry_run; then
+        echo "Would delete ${#deleted[@]} merged branch(es):"
+    else
+        echo "Deleted ${#deleted[@]} merged branch(es):"
+    fi
+    printf '  %s\n' "${deleted[@]}"
+else
+    echo "No merged branches to clean up."
+fi
