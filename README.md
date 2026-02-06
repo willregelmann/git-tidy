@@ -49,7 +49,3 @@ git tidy
 4. Deletes fully merged branches with `git branch -d` (safe delete — won't force-delete unmerged work)
 
 Skips the current branch and the default branch.
-
-## License
-
-MIT
