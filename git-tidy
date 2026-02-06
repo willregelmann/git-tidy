@@ -37,7 +37,7 @@ if [[ -z "$default_branch" ]]; then
     fi
 fi
 
-git fetch origin --prune --quiet
+git fetch origin --prune --quiet 2>/dev/null || true
 
 current=$(git branch --show-current)
 deleted=()
