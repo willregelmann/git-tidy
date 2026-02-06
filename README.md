@@ -58,20 +58,11 @@ Deleted 3 merged branch(es):
   hotfix/typo
 ```
 
-### As a post-merge hook
-
-Add to your global or repo-level `post-merge` hook to run automatically after `git pull`:
-
-```sh
-#!/bin/bash
-git tidy
-```
-
 ## How it works
 
 1. Detects the default branch (`main` or `master`) from the remote
 2. Runs `git fetch --prune` to sync remote tracking refs
-3. For each local branch, checks if it has 0 commits ahead of `origin/<default>`
-4. Deletes fully merged branches with `git branch -d` (safe delete — won't force-delete unmerged work)
+3. For each branch, checks if it has 0 commits ahead of `origin/<default>`
+4. Deletes fully merged branches with `git branch -d` locally, or `git push origin --delete` with `-r`
 
 Skips the current branch and the default branch.
