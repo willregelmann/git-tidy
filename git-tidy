@@ -174,7 +174,7 @@ if $delete_remote; then
     for ref in $(git for-each-ref --format='%(refname)' "refs/remotes/${remote}/"); do
         # Skip the <remote>/HEAD symref (its short name is the remote name itself)
         [[ "$ref" == "refs/remotes/${remote}/HEAD" ]] && continue
-        branch="${ref#refs/remotes/${remote}/}"
+        branch="${ref#refs/remotes/"${remote}"/}"
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
