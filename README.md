@@ -4,6 +4,8 @@
 
 Delete local branches that are fully merged into the default branch.
 
+![git-tidy demo](demo/git-tidy.gif)
+
 ## Installation
 
 ```sh
