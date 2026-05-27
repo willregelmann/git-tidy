@@ -1,5 +1,7 @@
 # git-tidy
 
+[![Tests](https://github.com/willregelmann/git-tidy/actions/workflows/test.yml/badge.svg)](https://github.com/willregelmann/git-tidy/actions/workflows/test.yml)
+
 Delete local branches that are fully merged into the default branch.
 
 ## Installation
@@ -58,6 +60,11 @@ Deleted 3 merged branch(es):
   hotfix/typo
 ```
 
+## Requirements
+
+- Bash 4+ (uses associative-style arrays and substring expansion)
+- Git
+
 ## How it works
 
 1. Detects the default branch (`main` or `master`) from the remote
@@ -66,3 +73,24 @@ Deleted 3 merged branch(es):
 4. Deletes fully merged branches with `git branch -d` locally, or `git push origin --delete` with `-r`
 
 Skips the current branch and the default branch.
+
+## Development
+
+Lint the script:
+
+```sh
+shellcheck git-tidy
+```
+
+Run the test suite ([bats](https://github.com/bats-core/bats-core)):
+
+```sh
+bats tests/
+```
+
+The tests create isolated, throwaway Git repositories with their own global
+config, so they don't touch your real repositories or git settings.
+
+## License
+
+[MIT](LICENSE)
