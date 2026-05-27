@@ -8,6 +8,7 @@ dry_run=false
 delete_remote=false
 skip_confirm=false
 base_branch=""
+remote="origin"
 exclude_patterns=()
 
 # Expand combined short flags (e.g. -rn -> -r -n)
@@ -51,8 +52,19 @@ while [[ $i -lt ${#expanded[@]} ]]; do
         --base=*)
             base_branch="${arg#--base=}"
             ;;
+        --remote-name)
+            i=$((i + 1))
+            if [[ $i -ge ${#expanded[@]} ]]; then
+                echo "Option $arg requires a remote name" >&2
+                exit 1
+            fi
+            remote="${expanded[$i]}"
+            ;;
+        --remote-name=*)
+            remote="${arg#--remote-name=}"
+            ;;
         -h|--help)
-            echo "Usage: git tidy [-n|--dry-run] [-r|--remote] [-y|--yes] [-b|--base <branch>] [-e|--exclude <pattern>]"
+            echo "Usage: git tidy [-n|--dry-run] [-r|--remote] [-y|--yes] [-b|--base <branch>] [-e|--exclude <pattern>] [--remote-name <name>]"
             echo ""
             echo "Delete local branches fully merged into the default branch."
             echo ""
@@ -62,6 +74,7 @@ while [[ $i -lt ${#expanded[@]} ]]; do
             echo "  -y, --yes                Skip confirmation prompt"
             echo "  -b, --base <branch>      Branch to compare against (default: auto-detected from remote)"
             echo "  -e, --exclude <pattern>  Exclude branches matching glob pattern (repeatable)"
+            echo "      --remote-name <name> Remote to compare against (default: origin)"
             exit 0
             ;;
         *)
@@ -72,15 +85,25 @@ while [[ $i -lt ${#expanded[@]} ]]; do
     i=$((i + 1))
 done
 
+if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+    echo "Not inside a git repository." >&2
+    exit 1
+fi
+
+if ! git remote get-url "$remote" &>/dev/null; then
+    echo "Remote '$remote' not found." >&2
+    exit 1
+fi
+
 # Detect default branch if not specified
 if [[ -n "$base_branch" ]]; then
     default_branch="$base_branch"
 else
-    default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@') || true
+    default_branch=$(git symbolic-ref "refs/remotes/${remote}/HEAD" 2>/dev/null | sed "s@^refs/remotes/${remote}/@@") || true
     if [[ -z "$default_branch" ]]; then
-        if git show-ref --verify --quiet refs/remotes/origin/main; then
+        if git show-ref --verify --quiet "refs/remotes/${remote}/main"; then
             default_branch="main"
-        elif git show-ref --verify --quiet refs/remotes/origin/master; then
+        elif git show-ref --verify --quiet "refs/remotes/${remote}/master"; then
             default_branch="master"
         else
             echo "Could not determine default branch." >&2
@@ -98,6 +121,13 @@ is_excluded() {
     return 1
 }
 
+# Emit a transient progress line only to an interactive terminal, so piped or
+# redirected output stays free of ANSI escape codes.
+progress() {
+    [[ -t 1 ]] || return 0
+    printf '\r\033[K%s' "$1"
+}
+
 # Classify how a ref relates to the base branch. Echoes:
 #   "ancestor" — no commits beyond the base (plain or fast-forward merge);
 #                safe to delete with `git branch -d`.
@@ -106,7 +136,7 @@ is_excluded() {
 #   ""         — not merged.
 merge_status() {
     local ref="$1"
-    local base="origin/${default_branch}"
+    local base="${remote}/${default_branch}"
     local ahead
     ahead=$(git rev-list --count "$base..$ref" 2>/dev/null) || return 0
     if [[ "$ahead" == "0" ]]; then
@@ -133,7 +163,7 @@ merge_status() {
     return 0
 }
 
-git fetch origin --prune --quiet || true
+git fetch "$remote" --prune --quiet || true
 
 current=$(git branch --show-current)
 candidates=()
@@ -141,10 +171,10 @@ methods=()
 
 # Collect candidates
 if $delete_remote; then
-    for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin/); do
-        # Skip the origin/HEAD symref (its short name is "origin", not "origin/HEAD")
-        [[ "$ref" == "refs/remotes/origin/HEAD" ]] && continue
-        branch="${ref#refs/remotes/origin/}"
+    for ref in $(git for-each-ref --format='%(refname)' "refs/remotes/${remote}/"); do
+        # Skip the <remote>/HEAD symref (its short name is the remote name itself)
+        [[ "$ref" == "refs/remotes/${remote}/HEAD" ]] && continue
+        branch="${ref#refs/remotes/"${remote}"/}"
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
@@ -193,8 +223,8 @@ failed=()
 if $delete_remote; then
     for idx in "${!candidates[@]}"; do
         branch="${candidates[$idx]}"
-        printf '\r\033[K[%d/%d] Deleting origin/%s...' "$((idx + 1))" "$total" "$branch"
-        if git push origin --delete "$branch" &>/dev/null; then
+        progress "[$((idx + 1))/$total] Deleting ${remote}/${branch}..."
+        if git push "$remote" --delete "$branch" &>/dev/null; then
             deleted+=("$branch")
         else
             failed+=("$branch")
@@ -203,7 +233,7 @@ if $delete_remote; then
 else
     for idx in "${!candidates[@]}"; do
         branch="${candidates[$idx]}"
-        printf '\r\033[K[%d/%d] Deleting %s...' "$((idx + 1))" "$total" "$branch"
+        progress "[$((idx + 1))/$total] Deleting ${branch}..."
         # Squash/rebase-merged branches differ by SHA, so `git branch -d` would
         # refuse them; we already verified their changes are upstream, so force.
         if [[ "${methods[$idx]}" == "ancestor" ]]; then
@@ -218,7 +248,7 @@ else
         fi
     done
 fi
-printf '\r\033[K'
+progress ""
 
 if [[ ${#deleted[@]} -gt 0 ]]; then
     echo "Deleted ${#deleted[@]} merged branch(es):"

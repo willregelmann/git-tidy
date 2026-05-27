@@ -50,6 +50,7 @@ git tidy -rn --exclude 'release/*'
 | `-y`, `--yes` | Skip confirmation prompt |
 | `-b`, `--base <branch>` | Branch to compare against (default: auto-detected from remote) |
 | `-e`, `--exclude <pattern>` | Exclude branches matching a glob pattern (repeatable) |
+| `--remote-name <name>` | Remote to compare against (default: `origin`) |
 
 Example output:
 
@@ -76,7 +77,7 @@ Deleted 3 merged branch(es):
 
 Skips the current branch and the default branch.
 
-> **Note:** `git tidy` compares against the `origin` remote, so the repository needs an `origin` remote with the default branch pushed to it. Branches are only deleted after their changes are verified present in `origin/<default>`.
+> **Note:** `git tidy` compares against a remote (`origin` by default; override with `--remote-name`), so the repository needs that remote with the default branch pushed to it. Branches are only deleted after their changes are verified present in `<remote>/<default>`.
 
 ## Development
 

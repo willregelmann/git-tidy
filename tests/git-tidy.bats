@@ -158,6 +158,36 @@ make_squash_merged() {
     [ -n "$output" ]
 }
 
+@test "errors when not inside a git repository" {
+    cd "$TMP"
+    run "$TIDY"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not inside a git repository."* ]]
+}
+
+@test "errors when the remote does not exist" {
+    run "$TIDY" --remote-name nope
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Remote 'nope' not found."* ]]
+}
+
+@test "--remote-name compares against a non-origin remote" {
+    git remote add upstream "$TMP/remote.git"
+    git fetch -q upstream
+    git remote set-head upstream main
+    make_merged merged-a
+    run "$TIDY" -n --remote-name upstream
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged-a"* ]]
+}
+
+@test "progress output contains no ANSI escapes when not a TTY" {
+    make_merged merged-a
+    run "$TIDY" -y
+    [[ "$output" == *"Deleted 1 merged branch(es):"* ]]
+    [[ "$output" != *$'\033'* ]]
+}
+
 @test "unknown option exits with an error" {
     run "$TIDY" --bogus
     [ "$status" -eq 1 ]
