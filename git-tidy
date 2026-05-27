@@ -112,7 +112,7 @@ if $delete_remote; then
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
-        ahead=$(git rev-list --count "origin/${default_branch}".."$ref" 2>/dev/null) || continue
+        ahead=$(git rev-list --count "origin/${default_branch}..$ref" 2>/dev/null) || continue
         [[ "$ahead" == "0" ]] && candidates+=("$branch")
     done
 else
@@ -121,7 +121,7 @@ else
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
-        ahead=$(git rev-list --count "origin/${default_branch}".."$branch" 2>/dev/null) || continue
+        ahead=$(git rev-list --count "origin/${default_branch}..$branch" 2>/dev/null) || continue
         [[ "$ahead" == "0" ]] && candidates+=("$branch")
     done
 fi
