@@ -98,10 +98,46 @@ is_excluded() {
     return 1
 }
 
+# Classify how a ref relates to the base branch. Echoes:
+#   "ancestor" — no commits beyond the base (plain or fast-forward merge);
+#                safe to delete with `git branch -d`.
+#   "patch"    — the ref's changes are already upstream via a squash or rebase
+#                merge, so its commits differ by SHA; requires `git branch -D`.
+#   ""         — not merged.
+merge_status() {
+    local ref="$1"
+    local base="origin/${default_branch}"
+    local ahead
+    ahead=$(git rev-list --count "$base..$ref" 2>/dev/null) || return 0
+    if [[ "$ahead" == "0" ]]; then
+        echo "ancestor"
+        return 0
+    fi
+    # Rebase / cherry-pick merge: every commit has a patch-equivalent upstream,
+    # so `git cherry` marks them all with "-" (none with "+").
+    local cherry_out
+    cherry_out=$(git cherry "$base" "$ref" 2>/dev/null) || return 0
+    if ! grep -q '^+' <<<"$cherry_out"; then
+        echo "patch"
+        return 0
+    fi
+    # Squash merge: collapse the ref's cumulative diff into one synthetic commit
+    # off the merge base, then check whether that diff is already upstream.
+    local mb tree dangling
+    mb=$(git merge-base "$base" "$ref" 2>/dev/null) || return 0
+    tree=$(git rev-parse "$ref^{tree}" 2>/dev/null) || return 0
+    dangling=$(git commit-tree "$tree" -p "$mb" -m _ 2>/dev/null) || return 0
+    if git cherry "$base" "$dangling" 2>/dev/null | grep -q '^-'; then
+        echo "patch"
+    fi
+    return 0
+}
+
 git fetch origin --prune --quiet || true
 
 current=$(git branch --show-current)
 candidates=()
+methods=()
 
 # Collect candidates
 if $delete_remote; then
@@ -112,8 +148,8 @@ if $delete_remote; then
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
-        ahead=$(git rev-list --count "origin/${default_branch}..$ref" 2>/dev/null) || continue
-        [[ "$ahead" == "0" ]] && candidates+=("$branch")
+        status=$(merge_status "$ref")
+        [[ -n "$status" ]] && { candidates+=("$branch"); methods+=("$status"); }
     done
 else
     for branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
@@ -121,8 +157,8 @@ else
         [[ "$branch" == "$default_branch" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
-        ahead=$(git rev-list --count "origin/${default_branch}..$branch" 2>/dev/null) || continue
-        [[ "$ahead" == "0" ]] && candidates+=("$branch")
+        status=$(merge_status "$branch")
+        [[ -n "$status" ]] && { candidates+=("$branch"); methods+=("$status"); }
     done
 fi
 
@@ -168,7 +204,14 @@ else
     for idx in "${!candidates[@]}"; do
         branch="${candidates[$idx]}"
         printf '\r\033[K[%d/%d] Deleting %s...' "$((idx + 1))" "$total" "$branch"
-        if git branch -d "$branch" &>/dev/null; then
+        # Squash/rebase-merged branches differ by SHA, so `git branch -d` would
+        # refuse them; we already verified their changes are upstream, so force.
+        if [[ "${methods[$idx]}" == "ancestor" ]]; then
+            delete_flag="-d"
+        else
+            delete_flag="-D"
+        fi
+        if git branch "$delete_flag" "$branch" &>/dev/null; then
             deleted+=("$branch")
         else
             failed+=("$branch")

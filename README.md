@@ -67,12 +67,16 @@ Deleted 3 merged branch(es):
 
 ## How it works
 
-1. Detects the default branch (`main` or `master`) from the remote
+1. Detects the default branch from the remote (`origin/HEAD`, falling back to `main` or `master`)
 2. Runs `git fetch --prune` to sync remote tracking refs
-3. For each branch, checks if it has 0 commits ahead of `origin/<default>`
-4. Deletes fully merged branches with `git branch -d` locally, or `git push origin --delete` with `-r`
+3. For each branch, decides whether it is merged into `origin/<default>`:
+   - **Plain / fast-forward merges** — the branch has 0 commits beyond the base.
+   - **Squash and rebase merges** — the branch's commits keep their original SHAs and never appear in the base, so a commit-count check misses them. `git tidy` instead checks whether the branch's changes are already present upstream (via `git cherry` patch-equivalence, including a synthetic squashed-diff commit), so squash-merged branches are detected too.
+4. Deletes merged branches: locally with `git branch -d` (or `-D` for squash/rebase merges, whose changes are confirmed upstream but which Git's own ancestry check would refuse), or `git push origin --delete` with `-r`
 
 Skips the current branch and the default branch.
+
+> **Note:** `git tidy` compares against the `origin` remote, so the repository needs an `origin` remote with the default branch pushed to it. Branches are only deleted after their changes are verified present in `origin/<default>`.
 
 ## Development
 
