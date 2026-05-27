@@ -158,6 +158,24 @@ make_squash_merged() {
     [ -n "$output" ]
 }
 
+@test "prompt proceeds when answered 'yes'" {
+    make_merged merged-a
+    run bash -c "echo yes | '$TIDY'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Deleted 1 merged branch(es):"* ]]
+    run git branch --list merged-a
+    [ -z "$output" ]
+}
+
+@test "prompt aborts cleanly on closed stdin (EOF)" {
+    make_merged merged-a
+    run bash -c "'$TIDY' </dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Aborted."* ]]
+    run git branch --list merged-a
+    [ -n "$output" ]
+}
+
 @test "errors when not inside a git repository" {
     cd "$TMP"
     run "$TIDY"

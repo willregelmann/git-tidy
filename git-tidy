@@ -209,11 +209,12 @@ if ! $skip_confirm; then
     echo "Will delete ${#candidates[@]} merged branch(es):"
     printf '  %s\n' "${candidates[@]}"
     printf "Proceed? [y/N] "
-    read -r answer
-    if [[ "$answer" != [yY] ]]; then
-        echo "Aborted."
-        exit 0
-    fi
+    # `|| true` so a closed stdin (EOF) aborts cleanly rather than tripping set -e.
+    read -r answer || true
+    case "$answer" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "Aborted."; exit 0 ;;
+    esac
 fi
 
 # Delete
