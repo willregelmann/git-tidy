@@ -105,10 +105,11 @@ candidates=()
 
 # Collect candidates
 if $delete_remote; then
-    for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/); do
-        branch="${ref#origin/}"
+    for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin/); do
+        # Skip the origin/HEAD symref (its short name is "origin", not "origin/HEAD")
+        [[ "$ref" == "refs/remotes/origin/HEAD" ]] && continue
+        branch="${ref#refs/remotes/origin/}"
         [[ "$branch" == "$default_branch" ]] && continue
-        [[ "$branch" == "HEAD" ]] && continue
         [[ ${#exclude_patterns[@]} -gt 0 ]] && is_excluded "$branch" && continue
 
         ahead=$(git rev-list --count "origin/${default_branch}".."$ref" 2>/dev/null) || continue
